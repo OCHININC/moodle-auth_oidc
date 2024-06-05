@@ -773,23 +773,58 @@ class authcode extends base {
             // See if we have an object listing.
             $username = $this->check_objects($oidcuniqid, $username);
             $matchedwith = $this->check_for_matched($username);
+            $skipusercreation = false;
             if (!empty($matchedwith)) {
                 if ($matchedwith->auth != 'oidc') {
+                    error_log('[oidc_handlelogin]: Moodle user ' . $username . ' is matched with o365 but objects not created' . PHP_EOL, 3, '/var/www/iomad/log/info.log');
                     $matchedwith->entraidupn = $username;
-                    throw new moodle_exception('errorusermatched', 'auth_oidc', null, $matchedwith);
+
+                    $now = time();
+                    $userobjectdata = (object) [
+                        'type' => 'user',
+                        'subtype' => '',
+                        'objectid' => $oidcuniqid,
+                        'o365name' => $username,
+                        'moodleid' => $matchedwith->id,
+                        'tenant' => '',
+                        'timecreated' => $now,
+                        'timemodified' => $now,
+                    ];
+                    $DB->insert_record('local_o365_objects', $userobjectdata);
+                    $DB->update_record('user', (object)['id' => $matchedwith->id, 'auth' => 'oidc']);
+                    $login_url = new moodle_url('/auth/oidc'); //'/auth/oidc/ucp.php'
+                    redirect($login_url);
+                    //throw new moodle_exception('errorusermatched', 'auth_oidc', null, $matchedwith);
+
                 }
+            }
+            elseif ($oidcusername != $username && $matchedwith = $this->check_for_matched($oidcusername)) {
+                if($matchedwith->auth != 'oidc') {
+                    error_log('[oidc_handlelogin]: User ' . $username . ' matched with entra user ' . $oidcusername . ' but is not setup to login with oidc' . PHP_EOL, 3, '/var/www/iomad/log/info.log');
+                    error_log('[oidc_handlelogin]: Switching moodle user with id: ' . $matchedwith->id . ' to oidc authentication' . PHP_EOL, 3, '/var/www/iomad/log/info.log');
+                    $DB->update_record('user', (object)['id' => $matchedwith->id, 'auth' => 'oidc']);
+                    $login_url = new moodle_url('/auth/oidc'); //'/auth/oidc/ucp.php'
+                    redirect($login_url);
+                }
+                else {
+                    error_log('[oidc_handlelogin]: User matched but auth is set to: ' . $matchedwith->auth . PHP_EOL, 3, '/var/www/iomad/log/info.log');
+                }
+            }
+            else {
+                error_log('[oidc_handlelogin]: Moodle user ' . $username . ' is not matched with entra user ' . $oidcusername . PHP_EOL, 3, '/var/www/iomad/log/info.log');
             }
             $username = trim(core_text::strtolower($username));
             $tokenrec = $this->createtoken($oidcuniqid, $username, $authparams, $tokenparams, $idtoken, 0, $originalupn);
 
             $existinguserparams = ['username' => $username, 'mnethostid' => $CFG->mnet_localhost_id];
-            if ($DB->record_exists('user', $existinguserparams) !== true) {
+            if ($DB->record_exists('user', $existinguserparams) !== true && !$skipusercreation) {
                 // User does not exist. Create user if site allows, otherwise fail.
                 if (empty($CFG->authpreventaccountcreation)) {
                     if (!$CFG->allowaccountssameemail) {
                         $userinfo = $this->get_userinfo($username);
                         if ($DB->count_records('user', array('email' => $userinfo['email'], 'deleted' => 0)) > 0) {
                             throw new moodle_exception('errorauthloginfaileddupemail', 'auth_oidc', null, null, '1');
+
                         }
                     }
                     $user = create_user_record($username, null, 'oidc');
