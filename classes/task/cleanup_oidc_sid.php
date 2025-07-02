@@ -15,18 +15,35 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Authentication landing page.
+ * A scheduled task to clean up oidc sid records.
  *
  * @package auth_oidc
- * @author James McQuillan <james.mcquillan@remote-learner.net>
+ * @author Lai Wei <lai.wei@enovation.ie>
  * @license http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @copyright (C) 2014 onwards Microsoft, Inc. (http://microsoft.com/)
+ * @copyright (C) 2021 onwards Microsoft, Inc. (http://microsoft.com/)
  */
 
-// phpcs:ignore moodle.Files.RequireLogin.Missing
-require_once(__DIR__.'/../../config.php');
-require_once(__DIR__.'/auth.php');
+namespace auth_oidc\task;
 
-$auth = new \auth_plugin_oidc('authcode');
-$auth->set_httpclient(new \auth_oidc\httpclient());
-$auth->handleredirect();
+use core\task\scheduled_task;
+
+/**
+ * A scheduled task that cleans up OIDC SID records.
+ */
+class cleanup_oidc_sid extends scheduled_task {
+    /**
+     * Get a descriptive name for the task.
+     */
+    public function get_name() {
+        return get_string('task_cleanup_oidc_sid', 'auth_oidc');
+    }
+
+    /**
+     * Clean up OIDC SID records.
+     */
+    public function execute() {
+        global $DB;
+
+        $DB->delete_records_select('auth_oidc_sid', 'timecreated < ?', [strtotime('-1 day')]);
+    }
+}

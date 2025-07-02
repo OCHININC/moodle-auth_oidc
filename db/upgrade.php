@@ -94,7 +94,7 @@ function xmldb_auth_oidc_upgrade($oldversion) {
 
                 // Populate token oidcusername.
                 if (empty($user->oidcusername)) {
-                    $updatedtoken = new \stdClass;
+                    $updatedtoken = new stdClass;
                     $updatedtoken->id = $user->tokenid;
                     $updatedtoken->oidcusername = $oidcusername;
                     $DB->update_record('auth_oidc_token', $updatedtoken);
@@ -105,12 +105,12 @@ function xmldb_auth_oidc_upgrade($oldversion) {
                     // Old username, update to upn/sub.
                     if ($oidcusername != $user->username) {
                         // Update username.
-                        $updateduser = new \stdClass;
+                        $updateduser = new stdClass;
                         $updateduser->id = $user->userid;
                         $updateduser->username = $oidcusername;
                         $DB->update_record('user', $updateduser);
 
-                        $updatedtoken = new \stdClass;
+                        $updatedtoken = new stdClass;
                         $updatedtoken->id = $user->tokenid;
                         $updatedtoken->username = $oidcusername;
                         $DB->update_record('auth_oidc_token', $updatedtoken);
@@ -144,7 +144,7 @@ function xmldb_auth_oidc_upgrade($oldversion) {
         foreach ($authtokensrs as $authtokenrec) {
             $newusername = trim(\core_text::strtolower($authtokenrec->username));
             if ($newusername !== $authtokenrec->username) {
-                $updatedrec = new \stdClass;
+                $updatedrec = new stdClass;
                 $updatedrec->id = $authtokenrec->id;
                 $updatedrec->username = $newusername;
                 $DB->update_record('auth_oidc_token', $updatedrec);
@@ -181,7 +181,7 @@ function xmldb_auth_oidc_upgrade($oldversion) {
                       JOIN {user} u ON u.username = tok.username';
             $records = $DB->get_recordset_sql($sql);
             foreach ($records as $record) {
-                $newrec = new \stdClass;
+                $newrec = new stdClass;
                 $newrec->id = $record->id;
                 $newrec->userid = $record->userid;
                 $DB->update_record('auth_oidc_token', $newrec);
@@ -398,7 +398,12 @@ function xmldb_auth_oidc_upgrade($oldversion) {
                     case AUTH_OIDC_MICROSOFT_ENDPOINT_VERSION_2:
                         $existingidptype = get_config('auth_oidc', 'idptype');
                         if ($existinglocksetting != AUTH_OIDC_IDP_TYPE_MICROSOFT_IDENTITY_PLATFORM) {
-                            add_to_config_log('idptype', $existingidptype, AUTH_OIDC_IDP_TYPE_MICROSOFT_IDENTITY_PLATFORM, 'auth_oidc');
+                            add_to_config_log(
+                                    'idptype',
+                                    $existingidptype,
+                                    AUTH_OIDC_IDP_TYPE_MICROSOFT_IDENTITY_PLATFORM,
+                                    'auth_oidc'
+                            );
                         }
                         set_config('idptype', AUTH_OIDC_IDP_TYPE_MICROSOFT_IDENTITY_PLATFORM, 'auth_oidc');
                         break;
@@ -497,6 +502,57 @@ function xmldb_auth_oidc_upgrade($oldversion) {
 
         // Oidc savepoint reached.
         upgrade_plugin_savepoint(true, 2022112836, 'auth', 'oidc');
+    }
+
+    if ($oldversion < 2022112841) {
+        // Set the default value for the bindingusernameclaim setting.
+        $bindingusernameclaimconfig = get_config('auth_oidc', 'bindingusernameclaim');
+        if (empty($bindingusernameclaimconfig)) {
+            set_config('bindingusernameclaim', 'auto', 'auth_oidc');
+        }
+
+        // Oidc savepoint reached.
+        upgrade_plugin_savepoint(true, 2022112841, 'auth', 'oidc');
+    }
+
+    if ($oldversion < 2022112842) {
+        // Define table auth_oidc_sid to be created.
+        $table = new xmldb_table('auth_oidc_sid');
+
+        // Adding fields to table auth_oidc_sid.
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '20', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('sid', XMLDB_TYPE_CHAR, '36', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+
+        // Adding keys to table auth_oidc_sid.
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+
+        // Conditionally launch create table for auth_oidc_sid.
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Migrate existing sid values from auth_oidc_tokens to auth_oidc_sid.
+        if ($dbman->field_exists('auth_oidc_token', 'sid')) {
+            $sql = "INSERT INTO {auth_oidc_sid} (userid, sid, timecreated)
+                    SELECT userid, sid, ? AS timecreated
+                    FROM {auth_oidc_token}
+                    WHERE sid IS NOT NULL AND sid != ''";
+            $DB->execute($sql, [time()]);
+        }
+
+        // Define field sid to be dropped from auth_oidc_token.
+        $table = new xmldb_table('auth_oidc_token');
+        $field = new xmldb_field('sid');
+
+        // Conditionally launch drop field sid.
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->drop_field($table, $field);
+        }
+
+        // Oidc savepoint reached.
+        upgrade_plugin_savepoint(true, 2022112842, 'auth', 'oidc');
     }
 
     return true;

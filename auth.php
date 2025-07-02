@@ -78,7 +78,7 @@ class auth_plugin_oidc extends \auth_plugin_base {
      *
      * @return bool
      */
-    function can_be_manually_set() {
+    public function can_be_manually_set() {
         return true;
     }
 
@@ -197,8 +197,8 @@ class auth_plugin_oidc extends \auth_plugin_base {
      * @param null $userid
      * @return mixed
      */
-    public function disconnect($justremovetokens = false, $donotremovetokens = false, \moodle_url $redirect = null,
-                               \moodle_url $selfurl = null, $userid = null) {
+    public function disconnect($justremovetokens = false, $donotremovetokens = false, ?\moodle_url $redirect = null,
+            ?\moodle_url $selfurl = null, $userid = null) {
         return $this->loginflow->disconnect($justremovetokens, $donotremovetokens, $redirect, $selfurl, $userid);
     }
 
@@ -320,7 +320,7 @@ class auth_plugin_oidc extends \auth_plugin_base {
             if ($redirect) {
                 $logouturl = get_config('auth_oidc', 'logouturi');
                 if (!$logouturl) {
-                    $logouturl = 'https://login.microsoftonline.com/common/oauth2/logout?post_logout_redirect_uri=' .
+                    $logouturl = 'https://login.microsoftonline.com/organizations/oauth2/logout?post_logout_redirect_uri=' .
                         urlencode($CFG->wwwroot);
                 } else {
                     if (preg_match("/^https:\/\/login.microsoftonline.com\//", $logouturl) &&
